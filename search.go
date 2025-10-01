@@ -4,10 +4,17 @@ import (
 	"math"
 	"sort"
 	"strings"
+
+	"github.com/kljensen/snowball/english"
 )
 
+// Hit is a scored search result.
+type Hit struct {
+	URL   string
+	Score float64
+}
+
 // Index stores data for TF-IDF ranking.
-// Deprecated: Use InMemIndex or SQLiteIndex instead
 type Index struct {
 	tf     map[string]map[string]int // stem -> doc -> term freq
 	df     map[string]int            // stem -> doc freq
@@ -29,6 +36,9 @@ func NewIndex(stop map[string]struct{}) *Index {
 	}
 }
 
+// internal stemmer
+func stem(w string) string { return english.Stem(w, true) }
+
 // Add indexes a single document. Pipeline: lower -> stop filter -> stem.
 func (idx *Index) Add(doc string, words []string) {
 	if _, dup := idx.docLen[doc]; dup {
@@ -45,7 +55,7 @@ func (idx *Index) Add(doc string, words []string) {
 		if _, bad := idx.stop[lw]; bad {
 			continue
 		}
-		s := stem(w)
+		s := stem(lw)
 		if s == "" {
 			continue
 		}
@@ -63,6 +73,17 @@ func (idx *Index) Add(doc string, words []string) {
 	}
 	idx.docLen[doc] = kept
 	idx.N++
+}
+
+// --- extracted comparator (outside SearchTFIDF) ---
+
+// lessHit orders two hits: higher score first; if scores are equal, URL ascending.
+// NOTE: `hits[j].URL > hits[i].URL` is equivalent to `hits[i].URL < hits[j].URL`.
+func lessHit(a, b Hit) bool {
+	if a.Score != b.Score {
+		return a.Score > b.Score
+	}
+	return b.URL > a.URL
 }
 
 // SearchTFIDF ranks a single-term query using TF-IDF.
@@ -100,14 +121,15 @@ func (idx *Index) SearchTFIDF(term string) []Hit {
 }
 
 // BuildIndexFromURLList downloads and indexes a list of URLs.
-func BuildIndexFromURLList(urls []string, indexer Indexer) error {
+func BuildIndexFromURLList(urls []string) (*Index, error) {
+	idx := NewIndex(nil)
 	for _, u := range urls {
 		b, err := Download(u)
 		if err != nil {
 			continue
 		}
 		words, _ := Extract(b)
-		indexer.Add(u, words)
+		idx.Add(u, words)
 	}
-	return nil
+	return idx, nil
 }
