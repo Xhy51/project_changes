@@ -1,4 +1,4 @@
-package project02
+package project03
 
 // DefaultStopwords returns a common English stopword set.
 // No globals: caller injects or uses this helper.

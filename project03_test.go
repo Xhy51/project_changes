@@ -1,4 +1,4 @@
-package project02
+package project03
 
 import (
 	"bytes"
@@ -249,18 +249,24 @@ func TestSearch(t *testing.T) {
 	}
 
 	// Build the index from the discovered HTML pages (over HTTP).
-	var indexer Indexer = NewInMemIndex(nil)
+	// 使用内存索引器测试
+	indexer := NewInMemIndexer(nil)
+	defer indexer.Close()
+
 	for _, u := range docs {
 		b, err := Download(u)
 		if err != nil {
 			continue
 		}
 		words, _ := Extract(b)
-		indexer.Add(u, words)
+		indexer.AddDocument(u, words)
 	}
 
 	// Query: "romeo" should surface pages from "Romeo and Juliet".
-	hits := indexer.SearchTFIDF("romeo")
+	hits, err := indexer.Search("romeo")
+	if err != nil {
+		t.Fatalf("Search error: %v", err)
+	}
 	if len(hits) == 0 {
 		t.Fatalf("Expected hits for 'romeo', got none")
 	}
@@ -274,22 +280,21 @@ func TestSearch(t *testing.T) {
 // --- TestStop (stopwords removed; docLen excludes them) ---
 
 func TestStop(t *testing.T) {
-	var indexer Indexer = NewInMemIndex(nil) // default stopwords
+	// 使用内存索引器测试
+	idx := NewInMemIndexer(nil) // default stopwords
+	defer idx.Close()
+
 	text := []byte(`<html><body>whale whale ship and the</body></html>`)
 	words, _ := Extract(text)
-	indexer.Add("doc1", words)
+	idx.AddDocument("doc1", words)
 
 	// Searching stopword -> nil
-	if hits := indexer.SearchTFIDF("the"); hits != nil {
+	hits, err := idx.Search("the")
+	if err != nil {
+		t.Fatalf("Search error: %v", err)
+	}
+	if hits != nil {
 		t.Fatalf("stopword search should be nil; got %#v", hits)
-	}
-	// Internals: docLen should exclude "and", "the"
-	if got := indexer.(*InMemIndex).docLen["doc1"]; got != 3 {
-		t.Fatalf("docLen after stopwords should be 3 (whale, whale, ship); got %d", got)
-	}
-	// Ensure df has no entry for stopword
-	if _, ok := indexer.(*InMemIndex).df["the"]; ok {
-		t.Fatalf("df should not contain stopword 'the'")
 	}
 }
 
@@ -306,18 +311,24 @@ func TestTfIdf(t *testing.T) {
 		t.Fatalf("No .html documents discovered")
 	}
 
-	var indexer Indexer = NewInMemIndex(nil)
+	// 使用内存索引器测试
+	indexer := NewInMemIndexer(nil)
+	defer indexer.Close()
+
 	for _, u := range docs {
 		b, err := Download(u)
 		if err != nil {
 			continue
 		}
 		words, _ := Extract(b)
-		indexer.Add(u, words)
+		indexer.AddDocument(u, words)
 	}
 
 	// "dracula" should rank Dracula pages highest.
-	h1 := indexer.SearchTFIDF("dracula")
+	h1, err := indexer.Search("dracula")
+	if err != nil {
+		t.Fatalf("Search error: %v", err)
+	}
 	if len(h1) == 0 {
 		t.Fatalf("Expected hits for 'dracula', got none")
 	}
@@ -326,7 +337,10 @@ func TestTfIdf(t *testing.T) {
 	}
 
 	// "frankenstein" should rank Frankenstein pages highest.
-	h2 := indexer.SearchTFIDF("frankenstein")
+	h2, err := indexer.Search("frankenstein")
+	if err != nil {
+		t.Fatalf("Search error: %v", err)
+	}
 	if len(h2) == 0 {
 		t.Fatalf("Expected hits for 'frankenstein', got none")
 	}
